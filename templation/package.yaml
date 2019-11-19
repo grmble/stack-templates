@@ -1,0 +1,61 @@
+name:                templation
+version:             0.1.0.0
+github:              "grmble/stack-templates"
+license:             MIT
+license-file:        LICENSE
+author:              "Juergen Gmeiner"
+maintainer:          "spamless.juergen@gmail.com"
+copyright:           "(c) 2019 Juergen Gmeiner"
+
+extra-source-files:
+- README.md
+
+
+description:         Create and modify stack templates
+
+# base 4.10 is stack lts 10 aka GHC 8.2.2
+dependencies:
+- base >= 4.10 && < 5
+- text
+- bytestring
+- directory
+- attoparsec
+- time
+- unordered-containers
+- data-default
+- ansi-terminal
+- unix-compat
+- filepath
+- string-conversions
+
+library:
+  source-dirs: src
+
+tests:
+  templation-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - templation
+    - doctest
+    - hspec
+    - QuickCheck
+
+executables:
+  templation:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -with-rtsopts=-T
+    dependencies:
+    - templation
+
+
+ghc-options: -O1 -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints

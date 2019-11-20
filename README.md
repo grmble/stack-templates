@@ -2,8 +2,9 @@
 
 This hosts my personal stack templates and a command line utility to create/modify them.
 
->>> And lead us not into templation.
->>> -- The Lord's Prayer
+> And lead us not into templation.
+>
+> -- The Lord's Prayer
 
 ## Installation
 

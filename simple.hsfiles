@@ -32,7 +32,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 all: {{name}}.cabal nix/{{name}}.nix nix/debug-log.nix
 
 clean:
-	rm -rf dist-newstyle .stack-work
+	rm -rf dist-newstyle .stack-work *.cabal
 
 {{name}}.cabal: package.yaml
 	hpack
@@ -95,107 +95,6 @@ mode progName =
 
 main :: IO ()
 main = getProgName >>= cmdArgsRun . mode . dropExtension >>= print
-{-# START_FILE {{name}}.cabal #-}
-cabal-version: 1.12
-
--- This file has been generated from package.yaml by hpack version 0.31.1.
---
--- see: https://github.com/sol/hpack
---
--- hash: 50d8bc27a4c96c7fc57d7c9318246333ae7692081ba4a0eccc43bdb2ed185f72
-
-name:           {{name}}
-version:        0.1.0.0
-description:    Template for simple haskell application
-homepage:       https://github.com/grmble/{{name}}#readme
-bug-reports:    https://github.com/grmble/{{name}}/issues
-author:         Juergen Gmeiner
-maintainer:     spamless.juergen@gmail.com
-copyright:      (c) 2019 Juergen Gmeiner
-license:        MIT
-license-file:   LICENSE
-build-type:     Simple
-extra-source-files:
-    README.md
-
-source-repository head
-  type: git
-  location: https://github.com/grmble/{{name}}
-
-library
-  exposed-modules:
-      Lib
-  other-modules:
-      Paths_{{name}}
-  hs-source-dirs:
-      src
-  ghc-options: -O1 -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
-  build-depends:
-      base >=4.10 && <5
-    , bytestring
-    , cmdargs
-    , containers
-    , data-default
-    , filepath
-    , generic-lens
-    , lens
-    , mtl
-    , text
-    , time
-    , unordered-containers
-  default-language: Haskell2010
-
-executable {{name}}
-  main-is: Main.hs
-  other-modules:
-      Paths_{{name}}
-  hs-source-dirs:
-      app
-  ghc-options: -O1 -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -with-rtsopts=-T
-  build-depends:
-      base >=4.10 && <5
-    , {{name}}
-    , bytestring
-    , cmdargs
-    , containers
-    , data-default
-    , filepath
-    , generic-lens
-    , lens
-    , mtl
-    , text
-    , time
-    , unordered-containers
-  default-language: Haskell2010
-
-test-suite {{name}}-test
-  type: exitcode-stdio-1.0
-  main-is: Spec.hs
-  other-modules:
-      DocTestSpec
-      LibSpec
-      Paths_{{name}}
-  hs-source-dirs:
-      test
-  ghc-options: -O1 -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      QuickCheck
-    , base >=4.10 && <5
-    , {{name}}
-    , bytestring
-    , cmdargs
-    , containers
-    , data-default
-    , doctest
-    , filepath
-    , generic-lens
-    , hspec
-    , lens
-    , mtl
-    , text
-    , time
-    , unordered-containers
-  default-language: Haskell2010
 {-# START_FILE nix/{{name}}.nix #-}
 { mkDerivation, base, bytestring, cmdargs, containers, data-default
 , doctest, generic-lens, hpack, hspec, lens, mtl, QuickCheck
@@ -420,6 +319,12 @@ xxx = undefined
 {-# START_FILE stack.yaml #-}
 # ghc 8.6.5
 resolver: lts-14.15
+
+extra-deps:
+# - git: https://github.com/grmble/debug-log.git
+#  commit: 93db96534695bfff9f7ad21125c616f162c7c044
+#  subdirs:
+#    - debug-log
 {-# START_FILE test/DocTestSpec.hs #-}
 module DocTestSpec where
 

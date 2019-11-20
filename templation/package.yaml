@@ -7,15 +7,12 @@ author:              "Juergen Gmeiner"
 maintainer:          "spamless.juergen@gmail.com"
 copyright:           "(c) 2019 Juergen Gmeiner"
 
-extra-source-files:
-- README.md
-
 
 description:         Create and modify stack templates
 
-# base 4.10 is stack lts 10 aka GHC 8.2.2
+# base 4.12 is ghc 8.6.x aka lts-14
 dependencies:
-- base >= 4.10 && < 5
+- base >= 4.12 && < 5
 - text
 - bytestring
 - directory

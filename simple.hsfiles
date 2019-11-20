@@ -1,0 +1,450 @@
+{-# START_FILE .ghci #-}
+:set -XOverloadedStrings
+:set -XTypeApplications
+{-# START_FILE .gitignore #-}
+.stack-work/
+dist-newstyle/
+*.cabal
+nix/{{name}}.nix
+result
+{-# START_FILE LICENSE #-}
+Copyright (c) 2019 Juergen Gmeiner
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject
+to the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
+ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+{-# START_FILE Makefile #-}
+all: {{name}}.cabal nix/{{name}}.nix nix/debug-log.nix
+
+clean:
+	rm -rf dist-newstyle .stack-work
+
+{{name}}.cabal: package.yaml
+	hpack
+
+nix/{{name}}.nix: package.yaml
+	cd nix && cabal2nix .. > {{name}}.nix
+
+nix/debug-log.nix:
+	cd nix && cabal2nix https://github.com/grmble/debug-log --subpath debug-log > debug-log.nix
+{-# START_FILE README.md #-}
+# Blueprint
+{-# START_FILE app/Main.hs #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# OPTIONS_GHC -fno-cse #-}
+
+{- example cmdargs main
+
+copy and pasted from the cmdargs readme
+-}
+module Main where
+
+import Data.Version (showVersion)
+import Paths_{{name}} (version)
+import System.Console.CmdArgs
+import System.Environment (getProgName)
+import System.FilePath (dropExtension)
+
+data Diffy
+  = Create { src :: Maybe FilePath
+           , out :: FilePath }
+  | Diff { old :: FilePath
+         , new :: FilePath
+         , out :: FilePath }
+  deriving (Data, Typeable, Show, Eq)
+
+outFlags :: Data v => v -> v
+outFlags x = x &= help "Output file" &= typFile
+
+create :: Diffy
+create =
+  Create
+    {src = def &= help "Source directory" &= typDir, out = outFlags "ls.txt"} &=
+  help "Create a fingerprint"
+
+diff :: Diffy
+diff =
+  Diff
+    { old = def &= typ "OLDFILE" &= argPos 0
+    , new = def &= typ "NEWFILE" &= argPos 1
+    , out = outFlags "diff.txt"
+    } &=
+  help "Perform a diff"
+
+mode :: String -> Mode (CmdArgs Diffy)
+mode progName =
+  cmdArgsMode $
+  modes [create, diff] &= help "Create and compare differences" &=
+  program progName &=
+  summary (progName <> " v" <> showVersion version)
+
+main :: IO ()
+main = getProgName >>= cmdArgsRun . mode . dropExtension >>= print
+{-# START_FILE {{name}}.cabal #-}
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.1.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 50d8bc27a4c96c7fc57d7c9318246333ae7692081ba4a0eccc43bdb2ed185f72
+
+name:           {{name}}
+version:        0.1.0.0
+description:    Template for simple haskell application
+homepage:       https://github.com/grmble/{{name}}#readme
+bug-reports:    https://github.com/grmble/{{name}}/issues
+author:         Juergen Gmeiner
+maintainer:     spamless.juergen@gmail.com
+copyright:      (c) 2019 Juergen Gmeiner
+license:        MIT
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/grmble/{{name}}
+
+library
+  exposed-modules:
+      Lib
+  other-modules:
+      Paths_{{name}}
+  hs-source-dirs:
+      src
+  ghc-options: -O1 -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
+  build-depends:
+      base >=4.10 && <5
+    , bytestring
+    , cmdargs
+    , containers
+    , data-default
+    , filepath
+    , generic-lens
+    , lens
+    , mtl
+    , text
+    , time
+    , unordered-containers
+  default-language: Haskell2010
+
+executable {{name}}
+  main-is: Main.hs
+  other-modules:
+      Paths_{{name}}
+  hs-source-dirs:
+      app
+  ghc-options: -O1 -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -with-rtsopts=-T
+  build-depends:
+      base >=4.10 && <5
+    , {{name}}
+    , bytestring
+    , cmdargs
+    , containers
+    , data-default
+    , filepath
+    , generic-lens
+    , lens
+    , mtl
+    , text
+    , time
+    , unordered-containers
+  default-language: Haskell2010
+
+test-suite {{name}}-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      DocTestSpec
+      LibSpec
+      Paths_{{name}}
+  hs-source-dirs:
+      test
+  ghc-options: -O1 -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      QuickCheck
+    , base >=4.10 && <5
+    , {{name}}
+    , bytestring
+    , cmdargs
+    , containers
+    , data-default
+    , doctest
+    , filepath
+    , generic-lens
+    , hspec
+    , lens
+    , mtl
+    , text
+    , time
+    , unordered-containers
+  default-language: Haskell2010
+{-# START_FILE nix/{{name}}.nix #-}
+{ mkDerivation, base, bytestring, cmdargs, containers, data-default
+, doctest, generic-lens, hpack, hspec, lens, mtl, QuickCheck
+, stdenv, text, time, unordered-containers
+}:
+mkDerivation {
+  pname = "{{name}}";
+  version = "0.1.0.0";
+  src = ./..;
+  isLibrary = true;
+  isExecutable = true;
+  libraryHaskellDepends = [
+    base bytestring cmdargs containers data-default generic-lens lens
+    mtl text time unordered-containers
+  ];
+  libraryToolDepends = [ hpack ];
+  executableHaskellDepends = [
+    base bytestring cmdargs containers data-default generic-lens lens
+    mtl text time unordered-containers
+  ];
+  testHaskellDepends = [
+    base bytestring cmdargs containers data-default doctest
+    generic-lens hspec lens mtl QuickCheck text time
+    unordered-containers
+  ];
+  prePatch = "hpack";
+  homepage = "https://github.com/grmble/{{name}}#readme";
+  license = stdenv.lib.licenses.mit;
+}
+{-# START_FILE nix/debug-log.nix #-}
+{ mkDerivation, aeson, ansi-terminal, base, bytestring
+, data-default, doctest, fast-logger, fetchgit, generic-lens, hpack
+, hspec, lens, mtl, QuickCheck, stdenv, text, time
+, unordered-containers
+}:
+mkDerivation {
+  pname = "debug-log";
+  version = "0.1.0.0";
+  src = fetchgit {
+    url = "https://github.com/grmble/debug-log";
+    sha256 = "0i20nyq3kswmag7jnmnv0dvl6zd2gv39j3r42667glyzibpacj97";
+    rev = "93db96534695bfff9f7ad21125c616f162c7c044";
+    fetchSubmodules = true;
+  };
+  postUnpack = "sourceRoot+=/debug-log; echo source root reset to $sourceRoot";
+  libraryHaskellDepends = [
+    aeson ansi-terminal base bytestring data-default fast-logger
+    generic-lens lens mtl text time unordered-containers
+  ];
+  libraryToolDepends = [ hpack ];
+  testHaskellDepends = [
+    aeson ansi-terminal base bytestring data-default doctest
+    fast-logger generic-lens hspec lens mtl QuickCheck text time
+    unordered-containers
+  ];
+  prePatch = "hpack";
+  homepage = "https://github.com/grmble/debug-log#readme";
+  license = stdenv.lib.licenses.mit;
+}
+{-# START_FILE package.yaml #-}
+name:                {{name}}
+version:             0.1.0.0
+github:              "grmble/{{name}}"
+license:             MIT
+license-file:        LICENSE
+author:              "Juergen Gmeiner"
+maintainer:          "spamless.juergen@gmail.com"
+copyright:           "(c) 2019 Juergen Gmeiner"
+
+extra-source-files:
+- README.md
+
+
+description:         Template for simple haskell application
+
+# base 4.12 is stack lts 10 aka GHC 8.6.5
+dependencies:
+- base >= 4.10 && < 5
+# system dependencies
+- text
+- bytestring
+- mtl
+- time
+# hashtable and map
+- unordered-containers
+- containers
+# defaults
+- data-default
+# lens
+- generic-lens
+- lens
+# command line parsing
+- cmdargs
+- filepath
+# debug-log to demo using a private haskell repo
+# this pulls in aeson, so we might as well provide it
+# - debug-log
+# - aeson
+
+library:
+  source-dirs: src
+
+executables:
+  {{name}}:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -with-rtsopts=-T
+    dependencies:
+    - {{name}}
+
+tests:
+  {{name}}-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - {{name}}
+    - doctest
+    - hspec
+    - QuickCheck
+
+ghc-options:
+- -O1
+- -Wall
+- -Wcompat
+- -Wincomplete-record-updates
+- -Wincomplete-uni-patterns
+- -Wredundant-constraints
+{-# START_FILE release.nix #-}
+let
+  # Disable tests for these packages
+  dontCheckPackages = [
+    # "optparse-applicative"
+  ];
+
+  # Jailbreak these packages
+  doJailbreakPackages = [
+    # "turtle"
+  ];
+
+  # Disable haddocks for these packages
+  dontHaddockPackages = [
+  ];
+
+  config = {
+    packageOverrides = pkgs: rec {
+      haskellPackages =
+        let
+          generatedOverrides = haskellPackagesNew: haskellPackagesOld:
+            let
+              toPackage = file: _: {
+                name  = builtins.replaceStrings [ ".nix" ] [ "" ] file;
+
+                value = haskellPackagesNew.callPackage (./. + "/nix/${file}") { };
+              };
+
+            in
+              pkgs.lib.mapAttrs' toPackage (builtins.readDir ./nix);
+
+          makeOverrides =
+            function: names: haskellPackagesNew: haskellPackagesOld:
+              let
+                toPackage = name: {
+                  inherit name;
+
+                  value = function haskellPackagesOld.${name};
+                };
+
+            in
+              builtins.listToAttrs (map toPackage names);
+
+          composeExtensionsList =
+            pkgs.lib.fold pkgs.lib.composeExtensions (_: _: {});
+
+          # More exotic overrides go here
+          manualOverrides = haskellPackagesNew: haskellPackagesOld: {
+	    # example: add shake or hoogle build tool dependency
+            # {{name}} = pkgs.haskell.lib.addBuildTool haskellPackagesOld.{{name}} haskellPackagesOld.shake;
+            # {{name}} = pkgs.haskell.lib.addBuildTool haskellPackagesOld.{{name}} haskellPackagesOld.hoogle;
+          };
+        in
+          pkgs.haskellPackages.override {
+            overrides = composeExtensionsList [
+              generatedOverrides
+              (makeOverrides pkgs.haskell.lib.dontCheck   dontCheckPackages  )
+              (makeOverrides pkgs.haskell.lib.doJailbreak doJailbreakPackages)
+              (makeOverrides pkgs.haskell.lib.dontHaddock dontHaddockPackages)
+              manualOverrides
+            ];
+          };
+    };
+  };
+
+  pkgs = import <nixpkgs> { inherit config; };
+
+in
+  { {{name}} = pkgs.haskellPackages.{{name}};
+  }
+{-# START_FILE shell.nix #-}
+(import ./release.nix).{{name}}.env
+{-# START_FILE src/Lib.hs #-}
+-- | Lib the foo in the baz.
+module Lib
+  ( xxx
+    -- * Section comment
+    -- | Explain some more
+  ) where
+
+-- | Document me!
+--
+-- >>> 1 + 1
+-- 3
+xxx :: IO ()
+xxx = undefined
+{-# START_FILE stack.yaml #-}
+# ghc 8.6.5
+resolver: lts-14.15
+{-# START_FILE test/DocTestSpec.hs #-}
+module DocTestSpec where
+
+import Test.DocTest
+import Test.Hspec
+
+-- not needed, but nice for ghci
+main :: IO ()
+main = hspec spec
+
+spec :: Spec
+spec = do
+  runIO $ doctest ["-isrc", "src/Lib.hs"]
+{-# START_FILE test/LibSpec.hs #-}
+module LibSpec where
+
+import Test.Hspec
+
+main :: IO ()
+main = hspec spec
+
+spec :: Spec
+spec =
+  describe "Int" $
+    it "==" $
+      1 `shouldBe` (2::Int)
+{-# START_FILE test/Spec.hs #-}
+{-# OPTIONS_GHC -F -pgmF hspec-discover #-}

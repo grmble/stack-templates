@@ -2,15 +2,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-unused-imports #-}
 
-{- | Create and modify Stack Templates
-
-The format is not really explained anywhere,
-but it's basically a list of mustache templates
-wrapped in School of Haskell Markdown Multi-File syntax.
-
-https://www.schoolofhaskell.com/school/how-to-use-the-school-of-haskell/soh-markdown#multi-file-snippets
-
--}
+-- | Create and modify Stack Templates
+--
+-- The format is not really explained anywhere,
+-- but it's basically a list of mustache templates
+-- wrapped in School of Haskell Markdown Multi-File syntax.
+--
+-- https://www.schoolofhaskell.com/school/how-to-use-the-school-of-haskell/soh-markdown#multi-file-snippets
 module Templation where
 
 import Control.Monad (foldM, join)
@@ -22,6 +20,7 @@ import Data.List (intersperse, sort, unfoldr)
 import Data.String.Conversions (cs)
 import System.Directory (getCurrentDirectory, listDirectory)
 import System.Environment (getArgs)
+import System.Exit (die)
 import System.FilePath (isExtensionOf, takeFileName)
 import System.PosixCompat (getFileStatus, isDirectory)
 
@@ -31,11 +30,10 @@ data Config = Config
   , replaceName :: Bool
   } deriving (Show)
 
-{- | Recursively list all relevant files
-
-Directories like @.git@, @.stack-work@ or @dist-newstyle@ are skipped.
-Ideally, we would parse .gitignore Files as well
--}
+-- | Recursively list all relevant files
+--
+-- Directories like @.git@, @.stack-work@ or @dist-newstyle@ are skipped.
+-- Ideally, we would parse .gitignore Files as well
 listFiles :: FilePath -> IO [FilePath]
 listFiles = go []
   where
@@ -90,13 +88,26 @@ processContent cfg bs =
          unfoldr (findPrePost "\r")
     else byteString bs
 
+parseOptions :: Config -> [String] -> Either String Config
+parseOptions = foldM handleOpt
+  where
+    handleOpt :: Config -> String -> Either String Config
+    handleOpt cfg "-n" = Right cfg {replaceName = False}
+    handleOpt _ _ = usage
+    usage =
+      Left $
+      "Usage: templation [-n]\n" <> "\n" <>
+      "Creates a stack template from project in current directory.\n" <>
+      "\n" <>
+      "-n\tDo not replace project name.\n"
+
 main :: IO ()
 main = do
-  [p] <- getArgs
-  n <- guessName p
-  let cfg = Config {path = p, name = cs n, replaceName = True}
-  out <- makeHSFile cfg
-  LB.putStr $ toLazyByteString out
-  where
-    guessName "." = takeFileName <$> getCurrentDirectory
-    guessName p = pure p
+  p <- getCurrentDirectory
+  let n = takeFileName p
+  args <- getArgs
+  case parseOptions (Config {path = ".", name = cs n, replaceName = True}) args of
+    Left msg -> die msg
+    Right cfg -> do
+      out <- makeHSFile cfg
+      LB.putStr $ toLazyByteString out

@@ -1,14 +1,17 @@
 {-# START_FILE .ghci #-}
-:set -XOverloadedStrings
-:set -XTypeApplications
+:set prompt "> "
+:set -fobject-code
+-- overloaded strings can be a bother in the repl
+:seti -XNoOverloadedStrings
+-- -w turns warnings off
+:seti -Wall
 {-# START_FILE .gitignore #-}
 .stack-work/
 dist-newstyle/
 *.cabal
 nix/{{name}}.nix
-result
-{-# START_FILE LICENSE #-}
-Copyright (c) 2019 Juergen Gmeiner
+result{-# START_FILE LICENSE #-}
+Copyright (c) 2020 Juergen Gmeiner
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -41,31 +44,69 @@ nix/{{name}}.nix: package.yaml
 	cd nix && cabal2nix .. > {{name}}.nix
 
 nix/debug-log.nix:
-	cd nix && cabal2nix https://github.com/grmble/debug-log --subpath debug-log > debug-log.nix
-{-# START_FILE README.md #-}
+	cd nix && cabal2nix https://github.com/grmble/debug-log --subpath debug-log > debug-log.nix{-# START_FILE README.md #-}
 # Blueprint
-{-# START_FILE app/Main.hs #-}
+
+## Usage
+
+With `stack`:
+
+    stack test # build and test
+    stack exec {{name}} -- --help # build and run the application
+    stack repl # enter the repl
+    stack repl --test # enter the repl with the test dependencies
+
+With `nix`:
+
+    nix-shell
+    cabal test # build and test
+    cabal run -- --help # build and run
+    cabal repl # enter the repl
+    cabal repl tests # enther the repl with the test dependencies{-# START_FILE app/Main.hs #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# OPTIONS_GHC -fno-cse #-}
 
 {- example cmdargs main
 
 copy and pasted from the cmdargs readme
+
+disabling common subexpression elimination is necessary or the example will not work
 -}
 module Main where
 
 import Data.Version (showVersion)
 import Paths_{{name}} (version)
 import System.Console.CmdArgs
+  ( CmdArgs,
+    Data,
+    Default (def),
+    Mode,
+    Typeable,
+    argPos,
+    cmdArgsMode,
+    cmdArgsRun,
+    help,
+    modes,
+    program,
+    summary,
+    typ,
+    typDir,
+    typFile,
+    (&=),
+  )
 import System.Environment (getProgName)
 import System.FilePath (dropExtension)
 
 data Diffy
-  = Create { src :: Maybe FilePath
-           , out :: FilePath }
-  | Diff { old :: FilePath
-         , new :: FilePath
-         , out :: FilePath }
+  = Create
+      { src :: Maybe FilePath,
+        out :: FilePath
+      }
+  | Diff
+      { old :: FilePath,
+        new :: FilePath,
+        out :: FilePath
+      }
   deriving (Data, Typeable, Show, Eq)
 
 outFlags :: Data v => v -> v
@@ -74,31 +115,43 @@ outFlags x = x &= help "Output file" &= typFile
 create :: Diffy
 create =
   Create
-    {src = def &= help "Source directory" &= typDir, out = outFlags "ls.txt"} &=
-  help "Create a fingerprint"
+    { src = def &= help "Source directory" &= typDir,
+      out = outFlags "ls.txt"
+    }
+    &= help "Create a fingerprint"
 
 diff :: Diffy
 diff =
   Diff
-    { old = def &= typ "OLDFILE" &= argPos 0
-    , new = def &= typ "NEWFILE" &= argPos 1
-    , out = outFlags "diff.txt"
-    } &=
-  help "Perform a diff"
+    { old = def &= typ "OLDFILE" &= argPos 0,
+      new = def &= typ "NEWFILE" &= argPos 1,
+      out = outFlags "diff.txt"
+    }
+    &= help "Perform a diff"
 
 mode :: String -> Mode (CmdArgs Diffy)
 mode progName =
   cmdArgsMode $
-  modes [create, diff] &= help "Create and compare differences" &=
-  program progName &=
-  summary (progName <> " v" <> showVersion version)
+    modes [create, diff] &= help "Create and compare differences"
+      &= program progName
+      &= summary (progName <> " v" <> showVersion version)
 
 main :: IO ()
-main = getProgName >>= cmdArgsRun . mode . dropExtension >>= print
+main = getProgName >>= cmdArgsRun . mode . dropExtension >>= print{-# START_FILE hie.yaml #-}
+cradle:
+  stack:
+    - path: "./src"
+      component: "{{name}}:lib"
+    - path: "./app"
+      component: "{{name}}:exe:{{name}}"
+    - path: "./test"
+      component: "{{name}}:test:{{name}}-test"
+
 {-# START_FILE nix/{{name}}.nix #-}
 { mkDerivation, base, bytestring, cmdargs, containers, data-default
-, doctest, generic-lens, hpack, hspec, lens, mtl, QuickCheck
-, stdenv, text, time, unordered-containers
+, doctest, filepath, generic-lens, hedgehog, hpack, lens, mtl
+, stdenv, tasty, tasty-hedgehog, tasty-hunit, text, time
+, unordered-containers
 }:
 mkDerivation {
   pname = "{{name}}";
@@ -107,18 +160,18 @@ mkDerivation {
   isLibrary = true;
   isExecutable = true;
   libraryHaskellDepends = [
-    base bytestring cmdargs containers data-default generic-lens lens
-    mtl text time unordered-containers
+    base bytestring cmdargs containers data-default filepath
+    generic-lens lens mtl text time unordered-containers
   ];
   libraryToolDepends = [ hpack ];
   executableHaskellDepends = [
-    base bytestring cmdargs containers data-default generic-lens lens
-    mtl text time unordered-containers
+    base bytestring cmdargs containers data-default filepath
+    generic-lens lens mtl text time unordered-containers
   ];
   testHaskellDepends = [
-    base bytestring cmdargs containers data-default doctest
-    generic-lens hspec lens mtl QuickCheck text time
-    unordered-containers
+    base bytestring cmdargs containers data-default doctest filepath
+    generic-lens hedgehog lens mtl tasty tasty-hedgehog tasty-hunit
+    text time unordered-containers
   ];
   prePatch = "hpack";
   homepage = "https://github.com/grmble/{{name}}#readme";
@@ -135,8 +188,8 @@ mkDerivation {
   version = "0.1.0.0";
   src = fetchgit {
     url = "https://github.com/grmble/debug-log";
-    sha256 = "0i20nyq3kswmag7jnmnv0dvl6zd2gv39j3r42667glyzibpacj97";
-    rev = "93db96534695bfff9f7ad21125c616f162c7c044";
+    sha256 = "0bl9591g4v0s2z96nr5q47a895zhvq2smawg64q3xh3y9kizi9gp";
+    rev = "266e7ab56b72d696cca678a6eadb2657c29d3720";
     fetchSubmodules = true;
   };
   postUnpack = "sourceRoot+=/debug-log; echo source root reset to $sourceRoot";
@@ -211,7 +264,7 @@ executables:
 
 tests:
   {{name}}-test:
-    main:                Spec.hs
+    main:                Main.hs
     source-dirs:         test
     ghc-options:
     - -threaded
@@ -220,11 +273,13 @@ tests:
     dependencies:
     - {{name}}
     - doctest
-    - hspec
-    - QuickCheck
+    - tasty
+    - tasty-hunit
+    - tasty-hedgehog
+    - hedgehog
 
 ghc-options:
-- -O1
+- -O2
 - -Wall
 - -Wcompat
 - -Wincomplete-record-updates
@@ -244,6 +299,7 @@ let
 
   # Disable haddocks for these packages
   dontHaddockPackages = [
+    "fail"
   ];
 
   config = {
@@ -278,7 +334,7 @@ let
 
           # More exotic overrides go here
           manualOverrides = haskellPackagesNew: haskellPackagesOld: {
-	    # example: add shake or hoogle build tool dependency
+	          # example: add shake or hoogle build tool dependency
             # {{name}} = pkgs.haskell.lib.addBuildTool haskellPackagesOld.{{name}} haskellPackagesOld.shake;
             # {{name}} = pkgs.haskell.lib.addBuildTool haskellPackagesOld.{{name}} haskellPackagesOld.hoogle;
           };
@@ -299,57 +355,67 @@ let
 
 in
   { {{name}} = pkgs.haskellPackages.{{name}};
-  }
-{-# START_FILE shell.nix #-}
-(import ./release.nix).{{name}}.env
-{-# START_FILE src/Lib.hs #-}
+  }{-# START_FILE shell.nix #-}
+(import ./release.nix).{{name}}.env{-# START_FILE src/Lib.hs #-}
 -- | Lib the foo in the baz.
 module Lib
-  ( xxx
+  ( xxx,
+
     -- * Section comment
+
     -- | Explain some more
-  ) where
+  )
+where
 
 -- | Document me!
 --
 -- >>> 1 + 1
--- 3
+-- 2
 xxx :: IO ()
-xxx = undefined
-{-# START_FILE stack.yaml #-}
+xxx = undefined{-# START_FILE stack.yaml #-}
 # ghc 8.6.5
-resolver: lts-14.15
+resolver: lts-14.27
 
 extra-deps:
 # - git: https://github.com/grmble/debug-log.git
-#  commit: 93db96534695bfff9f7ad21125c616f162c7c044
+#  commit: 266e7ab56b72d696cca678a6eadb2657c29d3720
 #  subdirs:
 #    - debug-log
-{-# START_FILE test/DocTestSpec.hs #-}
-module DocTestSpec where
+{-# START_FILE test/Main.hs #-}
+module Main where
 
-import Test.DocTest
-import Test.Hspec
-
--- not needed, but nice for ghci
-main :: IO ()
-main = hspec spec
-
-spec :: Spec
-spec = do
-  runIO $ doctest ["-isrc", "src/Lib.hs"]
-{-# START_FILE test/LibSpec.hs #-}
-module LibSpec where
-
-import Test.Hspec
+import Hedgehog (Property, forAll, property, (===))
+import qualified Hedgehog.Gen as Gen
+import qualified Hedgehog.Range as Range
+import Test.DocTest (doctest)
+import Test.Tasty (TestTree, defaultMain, testGroup)
+import Test.Tasty.HUnit (testCase, (@?=))
+import Test.Tasty.Hedgehog (testProperty)
 
 main :: IO ()
-main = hspec spec
+main = do
+  doctest ["-isrc", "src/Lib.hs"]
+  defaultMain tests
 
-spec :: Spec
-spec =
-  describe "Int" $
-    it "==" $
-      1 `shouldBe` (2::Int)
-{-# START_FILE test/Spec.hs #-}
-{-# OPTIONS_GHC -F -pgmF hspec-discover #-}
+tests :: TestTree
+tests = testGroup "Tests" [properties, unitTests]
+
+properties :: TestTree
+properties = testGroup "Properties" [testProperty "reverse" prop_reverse]
+
+unitTests :: TestTree
+unitTests =
+  testGroup
+    "Unit tests"
+    [ testCase "List comparison (different length)" $
+        ([1, 2, 3] :: [Int]) `compare` [1, 2] @?= GT,
+      -- the following test does not hold
+      testCase "List comparison (same length)" $
+        ([1, 2, 3] :: [Int]) `compare` [1, 2, 2] @?= GT
+    ]
+
+prop_reverse :: Property
+prop_reverse =
+  property $ do
+    xs <- forAll $ Gen.list (Range.linear 0 100) Gen.alpha
+    reverse (reverse xs) === xs

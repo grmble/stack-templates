@@ -42,7 +42,8 @@ listFiles = go []
       entries <- listDirectory p
       ( foldM prependPath acc
           . fmap (combinePath p)
-          . filter (not . (`elem` [".git", ".stack-work", "dist-newstyle"]))
+          . filter (not . (`elem` [".git", ".stack-work", "dist-newstyle", "stack.yaml.lock"]))
+          . filter (not . ("cabal" `isExtensionOf`))
           . filter (not . ("hsfiles" `isExtensionOf`))
         )
         entries

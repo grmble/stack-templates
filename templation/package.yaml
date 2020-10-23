@@ -5,7 +5,7 @@ license:             MIT
 license-file:        LICENSE
 author:              "Juergen Gmeiner"
 maintainer:          "spamless.juergen@gmail.com"
-copyright:           "(c) 2019 Juergen Gmeiner"
+copyright:           "(c) 2019,2020 Juergen Gmeiner"
 
 
 description:         Create and modify stack templates
@@ -30,7 +30,7 @@ library:
 
 tests:
   templation-test:
-    main:                Spec.hs
+    main:                Main.hs
     source-dirs:         test
     ghc-options:
     - -threaded
@@ -39,8 +39,10 @@ tests:
     dependencies:
     - templation
     - doctest
-    - hspec
-    - QuickCheck
+    - tasty
+    - tasty-hunit
+    - tasty-hedgehog
+    - hedgehog
 
 executables:
   templation:
@@ -55,4 +57,4 @@ executables:
     - templation
 
 
-ghc-options: -O1 -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
+ghc-options: -O2 -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints

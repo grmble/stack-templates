@@ -1,0 +1,9 @@
+cradle:
+  stack:
+    - path: "./src"
+      component: "templation:lib"
+    - path: "./app"
+      component: "templation:exe:templation"
+    - path: "./test"
+      component: "templation:test:templation-test"
+

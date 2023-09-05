@@ -38,26 +38,30 @@ import Templation.Git (gitConfig)
 -- implicit cmdargs is much shorter
 -- but it does not like deep hierarchical records
 
-data Op
-  = Init
-      { template :: String,
-        repo :: String,
-        username :: String,
-        email :: String,
-        project :: FilePath,
-        verbose :: Bool
-      }
-  | List
-      { repo :: String,
-        verbose :: Bool
-      }
-  | Store
-      { output :: FilePath,
-        username :: String,
-        email :: String,
-        project :: FilePath,
-        verbose :: Bool
-      }
+-- would have to use gibhub api (with api key)
+-- to list *.hsfiles in a repo
+
+-- also getting github raw files sucks,
+-- for now i'll just use stack for my
+-- cabal templates
+data Op =
+  {-
+      Init
+        { template :: String,
+          repo :: String,
+          username :: String,
+          email :: String,
+          project :: FilePath,
+          verbose :: Bool
+        }
+    | -}
+  Store
+  { output :: FilePath,
+    username :: String,
+    email :: String,
+    project :: FilePath,
+    verbose :: Bool
+  }
   deriving (Show, Eq, Data, Typeable)
 
 data Defaults = Defaults
@@ -76,6 +80,7 @@ defaults = do
   project <- getCurrentDirectory
   return $ Defaults {repo, username, email, project}
 
+{-
 initOp :: Defaults -> Op
 initOp Defaults {repo, username, email, project} =
   Init
@@ -91,14 +96,7 @@ initOp Defaults {repo, username, email, project} =
       verbose = False &= help "Verbose output"
     }
     &= help "Initialize a project from the given template"
-
-listOp :: Defaults -> Op
-listOp Defaults {repo} =
-  List
-    { repo = repo &= typ "REPO" &= opt "$REPO" &= help "Repo as in grmble/stack_templates or full github url, default: $ROOT",
-      verbose = False &= help "Verbose output"
-    }
-    &= help "List available templates"
+-}
 
 storeOp :: Defaults -> Op
 storeOp Defaults {username, email, project} =
@@ -116,8 +114,8 @@ mode = do
   d <- defaults
   return $
     cmdArgsMode $
-      modes [initOp d, listOp d, storeOp d]
-        &= help "Initialize projects or store templates"
+      modes [storeOp d]
+        &= help "Store templates"
         &= program "templation"
         &= summary "templation v0.2"
 

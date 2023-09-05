@@ -52,7 +52,7 @@ listFiles = go []
 -- | Combine 2 filepaths
 --
 -- >>> combinePath "a" "b"
--- "a/bc"
+-- "a/b"
 -- >>> combinePath "" "b"
 -- "b"
 -- >>> combinePath "." "b"
@@ -88,6 +88,8 @@ processContent Config {name, username, email} txt =
     & LT.intercalate "{{author}}"
     & LT.splitOn email
     & LT.intercalate "{{email}}"
+    & LT.splitOn "\r" -- remove carriage returns
+    & LT.intercalate ""
     & LT.fromLazyText
 
 data Config = Config

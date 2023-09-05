@@ -11,10 +11,6 @@ import Templation.Store qualified as Store
 main :: IO ()
 main =
   parseArgs >>= \case
-    Init {template, repo, username, email, project} ->
-      print "init"
-    List {repo} ->
-      print "list"
     Store {username, email, project, output, verbose} -> do
       p <-
         if project == "."

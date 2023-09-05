@@ -22,23 +22,19 @@ common deps
     , cmdargs
     , directory
     , filepath
+    , req
     , shake
     , text
-    , text-conversions
     , unix-compat
-    -- , ansi-terminal
-    -- , attoparsec
-    -- , data-default
-    -- , time
-    -- , unordered-containers
   default-language: GHC2021
   ghc-options: -O -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
 
 library
   import: deps
   exposed-modules:
-    , Templation
+    , Templation.Cmd
     , Templation.Git
+    , Templation.Store
   hs-source-dirs:
       src
 

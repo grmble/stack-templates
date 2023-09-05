@@ -23,7 +23,7 @@ import Data.Text.Lazy.Builder qualified as LT
 import Data.Text.Lazy.Encoding qualified as LT
 import Data.Text.Lazy.IO qualified as LT
 import System.Directory (listDirectory)
-import System.FilePath (isExtensionOf)
+import System.FilePath (isExtensionOf, makeRelative)
 import System.PosixCompat (getFileStatus, isDirectory)
 
 -- | Recursively list all relevant files
@@ -31,17 +31,18 @@ import System.PosixCompat (getFileStatus, isDirectory)
 -- Directories like @.git@, @.stack-work@ or @dist-newstyle@ are skipped.
 -- Ideally, we would parse .gitignore Files as well
 listFiles :: FilePath -> IO [FilePath]
-listFiles = go []
+listFiles prefixPath = go [] prefixPath
   where
     go :: [FilePath] -> FilePath -> IO [FilePath]
     go acc p = do
       entries <- listDirectory p
-      ( foldM prependPath acc
+      entries
+        & foldM prependPath acc
           . fmap (combinePath p)
           . filter (not . (`elem` [".git", ".stack-work", "dist-newstyle", "stack.yaml.lock"]))
           . filter (not . ("hsfiles" `isExtensionOf`))
-        )
-        entries
+        & fmap (fmap (makeRelative prefixPath))
+
     prependPath :: [FilePath] -> FilePath -> IO [FilePath]
     prependPath acc p = do
       st <- getFileStatus p
@@ -67,9 +68,9 @@ readSourceFile cfg p = startFile . LT.decodeUtf8 <$> LB.readFile p
   where
     startFile bs =
       LT.fromLazyText "{-# START_FILE "
-        <> processContent cfg (LT.pack p)
+        <> LT.fromLazyText (processContent cfg (LT.pack p))
         <> " #-}\n"
-        <> processContent cfg bs
+        <> ensureLinefeedAtEnd (processContent cfg bs)
 
 combineSourceFiles :: Config -> LT.Builder -> FilePath -> IO LT.Builder
 combineSourceFiles cfg b p = (b <>) <$> readSourceFile cfg p
@@ -79,7 +80,7 @@ makeHSFile cfg =
   listFiles (project cfg)
     >>= foldM (combineSourceFiles cfg) (LT.fromLazyText LT.empty) . sort
 
-processContent :: Config -> LT.Text -> LT.Builder
+processContent :: Config -> LT.Text -> LT.Text
 processContent Config {name, username, email} txt =
   txt
     & LT.splitOn name
@@ -90,7 +91,12 @@ processContent Config {name, username, email} txt =
     & LT.intercalate "{{email}}"
     & LT.splitOn "\r" -- remove carriage returns
     & LT.intercalate ""
-    & LT.fromLazyText
+
+ensureLinefeedAtEnd :: LT.Text -> LT.Builder
+ensureLinefeedAtEnd bs =
+  if LT.isSuffixOf "\n" bs
+    then LT.fromLazyText bs
+    else LT.fromLazyText bs <> "\n"
 
 data Config = Config
   { project :: FilePath,

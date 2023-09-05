@@ -1,11 +1,11 @@
-{-# START_FILE /Users/gj/src/haskell/stack-templates/{{name}}/.ghci #-}
+{-# START_FILE .ghci #-}
 :set prompt "> "
 :set -fobject-code
 -- overloaded strings can be a bother in the repl
 :seti -XNoOverloadedStrings
 -- -w turns warnings off
 :seti -Wall
-{-# START_FILE /Users/gj/src/haskell/stack-templates/{{name}}/LICENSE #-}
+{-# START_FILE LICENSE #-}
 Copyright (c) 2019,2020,2023 {{author}}
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -26,7 +26,7 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
 ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
 CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-{-# START_FILE /Users/gj/src/haskell/stack-templates/{{name}}/app/Main.hs #-}
+{-# START_FILE app/Main.hs #-}
 {-# LANGUAGE LambdaCase #-}
 
 module Main where
@@ -56,7 +56,7 @@ main =
             Store.name = LT.pack name,
             Store.verbose
           }
-{-# START_FILE /Users/gj/src/haskell/stack-templates/{{name}}/src/Templation/Cmd.hs #-}
+{-# START_FILE src/Templation/Cmd.hs #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 -- disable cse because it breaks implict cmdargs
 {-# OPTIONS_GHC -fno-cse #-}
@@ -182,7 +182,7 @@ parseArgs :: IO Op
 parseArgs =
   mode
     >>= cmdArgsRun
-{-# START_FILE /Users/gj/src/haskell/stack-templates/{{name}}/src/Templation/Git.hs #-}
+{-# START_FILE src/Templation/Git.hs #-}
 -- | Read Git Config
 -- |
 -- | Needs its own module without OverloadedStrings
@@ -201,7 +201,7 @@ gitConfig :: String -> IO String
 gitConfig cn =
   cmd "git" ["config", "--get", cn]
     <&> fromStdoutTrim
-{-# START_FILE /Users/gj/src/haskell/stack-templates/{{name}}/src/Templation/Store.hs #-}
+{-# START_FILE src/Templation/Store.hs #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | Create a Stack Template
@@ -227,7 +227,7 @@ import Data.Text.Lazy.Builder qualified as LT
 import Data.Text.Lazy.Encoding qualified as LT
 import Data.Text.Lazy.IO qualified as LT
 import System.Directory (listDirectory)
-import System.FilePath (isExtensionOf)
+import System.FilePath (isExtensionOf, makeRelative)
 import System.PosixCompat (getFileStatus, isDirectory)
 
 -- | Recursively list all relevant files
@@ -235,17 +235,18 @@ import System.PosixCompat (getFileStatus, isDirectory)
 -- Directories like @.git@, @.stack-work@ or @dist-newstyle@ are skipped.
 -- Ideally, we would parse .gitignore Files as well
 listFiles :: FilePath -> IO [FilePath]
-listFiles = go []
+listFiles prefixPath = go [] prefixPath
   where
     go :: [FilePath] -> FilePath -> IO [FilePath]
     go acc p = do
       entries <- listDirectory p
-      ( foldM prependPath acc
+      entries
+        & foldM prependPath acc
           . fmap (combinePath p)
           . filter (not . (`elem` [".git", ".stack-work", "dist-newstyle", "stack.yaml.lock"]))
           . filter (not . ("hsfiles" `isExtensionOf`))
-        )
-        entries
+        & fmap (fmap (makeRelative prefixPath))
+
     prependPath :: [FilePath] -> FilePath -> IO [FilePath]
     prependPath acc p = do
       st <- getFileStatus p
@@ -271,9 +272,9 @@ readSourceFile cfg p = startFile . LT.decodeUtf8 <$> LB.readFile p
   where
     startFile bs =
       LT.fromLazyText "{-# START_FILE "
-        <> processContent cfg (LT.pack p)
+        <> LT.fromLazyText (processContent cfg (LT.pack p))
         <> " #-}\n"
-        <> processContent cfg bs
+        <> ensureLinefeedAtEnd (processContent cfg bs)
 
 combineSourceFiles :: Config -> LT.Builder -> FilePath -> IO LT.Builder
 combineSourceFiles cfg b p = (b <>) <$> readSourceFile cfg p
@@ -283,7 +284,7 @@ makeHSFile cfg =
   listFiles (project cfg)
     >>= foldM (combineSourceFiles cfg) (LT.fromLazyText LT.empty) . sort
 
-processContent :: Config -> LT.Text -> LT.Builder
+processContent :: Config -> LT.Text -> LT.Text
 processContent Config {name, username, email} txt =
   txt
     & LT.splitOn name
@@ -294,7 +295,12 @@ processContent Config {name, username, email} txt =
     & LT.intercalate "{{email}}"
     & LT.splitOn "\r" -- remove carriage returns
     & LT.intercalate ""
-    & LT.fromLazyText
+
+ensureLinefeedAtEnd :: LT.Text -> LT.Builder
+ensureLinefeedAtEnd bs =
+  if LT.isSuffixOf "\n" bs
+    then LT.fromLazyText bs
+    else LT.fromLazyText bs <> "\n"
 
 data Config = Config
   { project :: FilePath,
@@ -313,7 +319,7 @@ makeTemplate cfg =
   where
     writeOutput "" = LT.putStr . LT.toLazyText
     writeOutput fn = LT.writeFile fn . LT.toLazyText
-{-# START_FILE /Users/gj/src/haskell/stack-templates/{{name}}/{{name}}.cabal #-}
+{-# START_FILE {{name}}.cabal #-}
 cabal-version:  3.6
 name:           {{name}}
 version:        0.2.0.0

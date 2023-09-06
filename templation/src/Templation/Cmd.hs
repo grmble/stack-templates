@@ -35,33 +35,24 @@ import System.Directory (getCurrentDirectory)
 import System.Environment (lookupEnv)
 import Templation.Git (gitConfig)
 
--- implicit cmdargs is much shorter
--- but it does not like deep hierarchical records
-
 -- would have to use gibhub api (with api key)
 -- to list *.hsfiles in a repo
-
--- also getting github raw files sucks,
--- for now i'll just use stack for my
--- cabal templates
-data Op =
-  {-
-      Init
-        { template :: String,
-          repo :: String,
-          username :: String,
-          email :: String,
-          project :: FilePath,
-          verbose :: Bool
-        }
-    | -}
-  Store
-  { output :: FilePath,
-    username :: String,
-    email :: String,
-    project :: FilePath,
-    verbose :: Bool
-  }
+data Op
+  = Init
+      { template :: String,
+        repo :: String,
+        username :: String,
+        email :: String,
+        project :: FilePath,
+        verbose :: Bool
+      }
+  | Hsfiles
+      { output :: FilePath,
+        username :: String,
+        email :: String,
+        project :: FilePath,
+        verbose :: Bool
+      }
   deriving (Show, Eq, Data, Typeable)
 
 data Defaults = Defaults
@@ -80,7 +71,6 @@ defaults = do
   project <- getCurrentDirectory
   return $ Defaults {repo, username, email, project}
 
-{-
 initOp :: Defaults -> Op
 initOp Defaults {repo, username, email, project} =
   Init
@@ -88,34 +78,32 @@ initOp Defaults {repo, username, email, project} =
       repo =
         repo
           &= typ "REPO"
-          &= opt "$REPO"
-          &= help "Repo as in grmble/stack_templates or full github url, default: $ROOT",
-      username = username &= typ "USER" &= opt "git config --get user.name" &= help "Username for author fields, default from git config",
-      email = email &= typ "EMAIL" &= opt "git config --get user.email" &= help "Email for email fields, default from git config",
-      project = project &= typ "DIR" &= opt "current directory" &= help "project directory",
+          &= help "Repo as in grmble/stack_templates or full github url, default: $TEMPLATION_REPO",
+      username = username &= typ "USER" &= help "Username for author fields, default from git config",
+      email = email &= typ "EMAIL" &= help "Email for email fields, default from git config",
+      project = project &= typ "DIR" &= help "project directory",
       verbose = False &= help "Verbose output"
     }
     &= help "Initialize a project from the given template"
--}
 
-storeOp :: Defaults -> Op
-storeOp Defaults {username, email, project} =
-  Store
-    { output = "" &= typ "FILE" &= opt "xxx" &= help "Output .hsfile (default: standard out)",
-      username = username &= typ "USER" &= opt "git config --get user.name" &= help "Username for author fields, default from git config",
-      email = email &= typ "EMAIL" &= opt "git config --get user.email" &= help "Email for email fields, default from git config",
-      project = project &= typ "DIR" &= opt "current directory" &= help "project directory",
+mkHsfilesOp :: Defaults -> Op
+mkHsfilesOp Defaults {username, email, project} =
+  Hsfiles
+    { output = "" &= typ "FILE" &= help "Output .hsfile (default: standard out)",
+      username = username &= typ "USER" &= help "Username for author fields, default from git config",
+      email = email &= typ "EMAIL" &= help "Email for email fields, default from git config",
+      project = project &= typ "DIR" &= help "project directory",
       verbose = False &= help "Verbose output"
     }
-    &= help "Store a project as a template"
+    &= help "Make a template from a project"
 
 mode :: IO (Mode (CmdArgs Op))
 mode = do
   d <- defaults
   return $
     cmdArgsMode $
-      modes [storeOp d]
-        &= help "Store templates"
+      modes [{- initOp d, -} mkHsfilesOp d]
+        &= help "Init projects and make hsfiles"
         &= program "templation"
         &= summary "templation v0.2"
 

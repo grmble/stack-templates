@@ -6,24 +6,27 @@ import Data.Text.Lazy qualified as LT
 import System.Directory (getCurrentDirectory)
 import System.FilePath (takeFileName)
 import Templation.Cmd
-import Templation.Store qualified as Store
+import Templation.Hsfiles qualified as Hsfiles
 
 main :: IO ()
 main =
   parseArgs >>= \case
-    Store {username, email, project, output, verbose} -> do
+    Hsfiles {username, email, project, output, verbose} -> do
       p <-
         if project == "."
           then getCurrentDirectory
           else return project
       let name = takeFileName p
 
-      Store.makeTemplate
-        Store.Config
-          { Store.username = LT.pack username,
-            Store.email = LT.pack email,
-            Store.project = p,
-            Store.output = output,
-            Store.name = LT.pack name,
-            Store.verbose
+      Hsfiles.makeTemplate
+        Hsfiles.Config
+          { Hsfiles.username = LT.pack username,
+            Hsfiles.email = LT.pack email,
+            Hsfiles.project = p,
+            Hsfiles.output = output,
+            Hsfiles.name = LT.pack name,
+            Hsfiles.verbose
           }
+    i@Init {} ->
+      -- will not be parsed, the mode is deactivated
+      print i

@@ -22,7 +22,6 @@ common deps
     , cmdargs
     , directory
     , filepath
-    , req
     , shake
     , text
     , unix-compat
@@ -31,18 +30,18 @@ common deps
 
 library
   import: deps
-  exposed-modules:
-    , Templation.Cmd
-    , Templation.Git
-    , Templation.Store
-  hs-source-dirs:
-      src
+  exposed-modules: 
+    Templation.Cmd
+    Templation.Git
+    Templation.Hsfiles
+  hs-source-dirs: 
+    src
 
 executable templation
   import: deps
   main-is: Main.hs
-  hs-source-dirs:
-      app
+  hs-source-dirs: 
+    app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -with-rtsopts=-T
   build-depends:
     , templation

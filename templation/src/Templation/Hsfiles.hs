@@ -7,7 +7,7 @@
 -- wrapped in School of Haskell Markdown Multi-File syntax.
 --
 -- https://www.schoolofhaskell.com/school/how-to-use-the-school-of-haskell/soh-markdown#multi-file-snippets
-module Templation.Store
+module Templation.Hsfiles
   ( Config (..),
     makeTemplate,
   )

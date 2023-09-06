@@ -1,0 +1,193 @@
+{-# START_FILE CHANGELOG.md #-}
+# Revision history for {{name}}
+
+## 0.1.0.0 -- YYYY-mm-dd
+
+* First version. Released on an unsuspecting world.
+{-# START_FILE LICENSE #-}
+Copyright (c) 2023 {{author}}
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+{-# START_FILE README.md #-}
+# {{name}}
+
+## Install needed binaries
+
+    cabal install hspec-discover
+    cabal install doctest
+
+## Running
+
+    cabal repl --with-ghc=doctest
+
+    cabal test
+{-# START_FILE app/Main.hs #-}
+-- allow functions that can never be called, or rather turn off the check
+{-# LANGUAGE AllowAmbiguousTypes #-}
+-- finer grained kinds for use with GADTs
+{-# LANGUAGE DataKinds #-}
+-- allow multiple types with the same field names
+{-# LANGUAGE DuplicateRecordFields #-}
+-- gadt syntax with existential variables
+{-# LANGUAGE GADTs #-}
+-- string literals use IsString.fromString
+{-# LANGUAGE OverloadedStrings #-}
+-- type level programming - type level functions
+{-# LANGUAGE TypeFamilies #-}
+-- permit instance definitions that could bottom the type checker
+{-# LANGUAGE UndecidableInstances #-}
+-- no common subexpression elemination - may be needed with unsafePerformIO
+{-# OPTIONS_GHC -fno-cse #-}
+
+module Main where
+
+import XxxLib qualified (someFunc)
+
+main :: IO ()
+main = do
+  putStrLn "Hello, Haskell!"
+  XxxLib.someFunc
+{-# START_FILE src/XxxLib.hs #-}
+-- allow functions that can never be called, or rather turn off the check
+{-# LANGUAGE AllowAmbiguousTypes #-}
+-- finer grained kinds for use with GADTs
+{-# LANGUAGE DataKinds #-}
+-- allow multiple types with the same field names
+{-# LANGUAGE DuplicateRecordFields #-}
+-- gadt syntax with existential variables
+{-# LANGUAGE GADTs #-}
+-- string literals use IsString.fromString
+{-# LANGUAGE OverloadedStrings #-}
+-- type level programming - type level functions
+{-# LANGUAGE TypeFamilies #-}
+-- permit instance definitions that could bottom the type checker
+{-# LANGUAGE UndecidableInstances #-}
+-- no common subexpression elemination - may be needed with unsafePerformIO/cmdargs
+{-# OPTIONS_GHC -fno-cse #-}
+
+module XxxLib (someFunc, add) where
+
+import GHC.Natural (Natural)
+
+someFunc :: IO ()
+someFunc = putStrLn "someFunc"
+
+-- | Add two natural numbers.
+--
+-- >>> add 17 4
+-- 21
+add :: Natural -> Natural -> Natural
+add a b = a + b
+{-# START_FILE test/Spec.hs #-}
+{-# OPTIONS_GHC -F -pgmF hspec-discover #-}
+{-# START_FILE test/XxxLibSpec.hs #-}
+module XxxLibSpec where
+
+import Test.Hspec
+import Test.QuickCheck
+import XxxLib
+
+spec :: Spec
+spec = do
+  describe "XxxLib" $ do
+    it "has a function and can add two natural number" $ do
+      add 17 4 `shouldBe` 21
+  describe "read" $ do
+    it "is inverse to show" $ property $
+      \x -> (read . show) x `shouldBe` (x :: Int)
+
+main :: IO ()
+main = hspec spec
+{-# START_FILE {{name}}.cabal #-}
+cabal-version:      3.6
+name:               {{name}}
+version:            0.1.0.0
+synopsis:           X the {{name}}ing x
+-- A longer description of the package.
+-- description:
+homepage:           https://{{name}}.com/{{name}}
+-- A URL where users can report bugs.
+-- bug-reports:
+license:            MIT
+license-file:       LICENSE
+author:             {{author}}
+maintainer:         {{email}}
+
+-- A copyright notice.
+-- copyright:
+-- category:
+extra-source-files: CHANGELOG.md
+
+
+common deps
+    build-depends:
+        -- 4.16.4 is ghc 9.2.x
+        , base ^>=4.16.4.0
+    default-language: GHC2021
+
+common test-deps
+    import: deps
+    build-depends:    
+        , doctest
+        , hspec
+        , hspec-discover
+        , QuickCheck
+
+common opts
+    ghc-options:
+        -O      
+        -Wall
+        -Wcompat
+        -Wincomplete-record-updates
+        -Wincomplete-uni-patterns
+        -Wredundant-constraints
+
+common exec-opts
+    import: opts
+    ghc-options:      
+        -threaded
+        -rtsopts
+        -with-rtsopts=-N
+        -with-rtsopts=-T
+
+        
+library
+    import:           deps, opts
+    exposed-modules:  XxxLib
+    -- Modules included in this library but not exported.
+    -- other-modules:
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+    hs-source-dirs:   src
+    
+executable {{name}}
+    import:           deps, opts, exec-opts
+    main-is:          Main.hs
+    build-depends:    {{name}}
+    hs-source-dirs:   app
+
+test-suite {{name}}-test
+    import:           deps, test-deps, opts, exec-opts
+    other-modules:    XxxLibSpec
+    build-depends:    {{name}}
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Spec.hs
+    

@@ -1,7 +1,8 @@
 {-# START_FILE .ghci #-}
 :set -fobject-code
 :set -iapp -isrc
-:def restart (\_ -> return ":load Main\n:reload\nstart")
+:set -fno-warn-missing-home-modules
+:def restart (\_ -> return ":load Dev\nstart")
 {-# START_FILE .gitignore #-}
 /dist-newstyle/
 /node_modules/
@@ -40,100 +41,257 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     cabal install hspec-discover
     cabal install doctest
 
+## Install Javascript Toolchain
+
+    pnpm install
+
 ## Running
 
     # doctests
-    cabal repl --with-ghc=doctest
+    cabal exec repl --with-ghc=doctest
 
     # spec
     cabal test
 
-    # run the server
-    cabal run {{name}}
-
     # use the repl - type :restart at the prompt, repeatedly
     cabal repl
 
-Right now, the build system for css/js is run
-both with restart and main.
+The :restart command will automatically bundle css + js,
+the same when building the server (here the bundled css/js will be embedded).
 
-Alternative: `cabal exec runghc app/Build.hs`
+    cabal build # will build an executuable with css+js embedded
+
+    cabal run {{name}} # will run the executable
 
 
 ## Using in GHCI
 
 * https://github.com/chrisdone/ghci-reload-demo
 * https://chrisdone.com/posts/making-ghci-fast/
-{-# START_FILE app/Build.hs #-}
-module Build where
-
-import Development.Shake
-import Development.Shake.Command
-import Development.Shake.FilePath
-import Development.Shake.Util
-
-main :: IO ()
-main = shakeArgs shakeOptions {shakeFiles = "dist-newstyle/_shake"} $ do
-  want ["dist-newstyle/resources/{{name}}.js.gz", "dist-newstyle/resources/{{name}}.css.gz"]
-
-  phony "clean" $ do
-    putInfo "Cleaning dist-newstyle/_shake"
-    removeFilesAfter "dist-newstyle/_shake" ["//*"]
-
-  "dist-newstyle/resources/*.gz" %> \out -> do
-    let in_ = dropExtension out
-    need [in_]
-    cmd_ "gzip -9 -k" [in_]
-
-  "dist-newstyle/resources/{{name}}.css" %> \out -> do
-    let in_ = "resources/{{name}}.css"
-    need [in_]
-    cmd_ "pnpm tailwindcss -i" in_ "--minify -o " out
-
-  "dist-newstyle/resources/{{name}}.js" %> \out -> do
-    let in_ = "resources/{{name}}.js"
-    need [in_]
-    cmd_ "pnpm esbuild" [in_] (" --bundle --minify --outfile=" <> out)
-{-# START_FILE app/Main.hs #-}
-{-# LANGUAGE DuplicateRecordFields #-}
+{-# START_FILE app/Dev.hs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# OPTIONS_GHC -fno-cse #-}
+
+module Dev where
+
+import Control.Concurrent (forkIO, killThread)
+import Control.Concurrent.Chan.Unagi (newChan, writeChan)
+import Data.IORef (newIORef, readIORef)
+import Data.Word (Word32)
+import Foreign.Store (Store (..), deleteStore, lookupStore, readStore, writeStore)
+import Main.Build qualified
+import Main.Server qualified
+
+--
+-- in ghci, use start (which can also re-start!) and optionally stop
+--
+start :: IO ()
+start = do
+  Main.Build.main
+  reload <- reuseStored reloadStoreId (fst <$> newChan)
+  tid <- reuseStored tidStoreId $ Main.Server.withServerVerbosity (Just reload) Main.Server.resourcesWare startServer
+  putStrLn ("started server with tid " <> show tid)
+  writeChan reload ()
+  return ()
+  where
+    startServer server env =
+      forkIO . Main.Server.runServer server env
+
+stop :: IO ()
+stop = do
+  shutdownStored tidStoreId killThread
+  shutdownStored reloadStoreId $ \reload ->
+    -- trigger a reload so the running threads complete
+    writeChan reload ()
+
+reuseStored :: Word32 -> IO a -> IO a
+reuseStored idx create =
+  lookupStore idx >>= \case
+    Nothing -> do
+      x <- create
+      ref <- newIORef x
+      _ <- writeStore (Store idx) ref
+      return x
+    Just store -> do
+      ref <- readStore store
+      readIORef ref
+
+shutdownStored :: Word32 -> (a -> IO ()) -> IO ()
+shutdownStored idx action = do
+  lookupStore idx >>= \case
+    Nothing -> return ()
+    Just store -> do
+      ref <- readStore store
+      x <- readIORef ref
+      action x
+      deleteStore store
+
+reloadStoreId :: Word32
+reloadStoreId = 0
+
+tidStoreId :: Word32
+tidStoreId = 1
+{-# START_FILE app/Main.hs #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Main where
 
-import Build qualified
-import Control.Concurrent (forkIO, killThread)
-import Data.ByteString.Builder (byteString)
-import Data.ByteString.Char8 qualified as BS
-import Data.Data ()
+import Main.BuildTH qualified
+import Main.Server qualified
+import Network.Wai (Middleware, Request (pathInfo))
+import Network.Wai.Application.Static (staticApp)
+import WaiAppStatic.Storage.Embedded (mkSettings)
+
+--
+-- main entry point from the command line
+--
+main :: IO ()
+main = do
+  Main.Server.withServerVerbosity
+    Nothing
+    (const embeddedResourcesWare)
+    Main.Server.runServer
+
+embeddedResourcesWare :: Middleware
+embeddedResourcesWare app req send =
+  case pathInfo req of
+    "resources" : _ -> static req send
+    _ -> app req send
+  where
+    static = staticApp $(mkSettings (Main.BuildTH.mkEmbedded "dist-newstyle"))
+{-# START_FILE app/Main/Build.hs #-}
+module Main.Build where
+
+import Development.Shake
+-- import Development.Shake.Command
+import Development.Shake.FilePath
+
+-- import Development.Shake.Util
+
+-- | Interactive entry point, allows command arguments
+main :: IO ()
+main = shakeArgs options rules
+
+-- | Build hard coded to the default targets
+-- |
+-- | But it does not try to parse the command line, so it
+-- | should work with template haskell
+build :: IO ()
+build = shake options rules
+
+rules :: Rules ()
+rules = do
+  want [outputResourceDir </> "{{name}}.js.gz", outputResourceDir </> "{{name}}.css.gz"]
+
+  phony "clean" $ do
+    putInfo ("Cleaning " <> shakeDir)
+    removeFilesAfter shakeDir ["//*"]
+
+  outputResourceDir </> "*.gz" %> \out -> do
+    let in_ = dropExtension out
+    need [in_, buildHS]
+    cmd_ "gzip -9 -fk" [in_]
+
+  outputResourceDir </> "{{name}}.css" %> \out -> do
+    let in_ = "resources/{{name}}.css"
+    need [in_, buildHS]
+    cmd_ "pnpm tailwindcss -i" in_ "--minify -o " out
+
+  outputResourceDir </> "{{name}}.js" %> \out -> do
+    let in_ = "resources/{{name}}.js"
+    need [in_, buildHS]
+    cmd_ "pnpm esbuild" [in_] (" --bundle --minify --outfile=" <> out)
+
+distDir :: FilePath
+distDir = "dist-newstyle"
+
+shakeDir :: FilePath
+shakeDir = distDir </> "_shake"
+
+outputResourceDir :: FilePath
+outputResourceDir = distDir </> "resources"
+
+buildHS :: FilePath
+buildHS = "app/Main/Build.hs"
+
+options :: ShakeOptions
+options = shakeOptions {shakeFiles = shakeDir}
+{-# START_FILE app/Main/BuildTH.hs #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskellQuotes #-}
+
+module Main.BuildTH where
+
+import Control.Monad (forM)
+import Crypto.Hash.SHA256 (hashlazy)
+import Data.ByteString.Base64 as B64
+import Data.ByteString.Lazy as BL
 import Data.Function ((&))
-import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.String (fromString)
+import Data.Text qualified as T
+import Data.Text.Encoding qualified as T
+import Language.Haskell.TH
+import Main.Build qualified as Build
+import Network.Mime (defaultMimeLookup)
+import System.FilePath ((</>))
+import System.FilePattern.Directory (getDirectoryFiles)
+import WaiAppStatic.Storage.Embedded
+
+etag :: BL.ByteString -> T.Text
+etag bytes =
+  hashlazy bytes
+    & B64.encode
+    & T.decodeUtf8
+
+mkEmbedded :: FilePath -> IO [EmbeddableEntry]
+mkEmbedded rootDir = do
+  Build.build
+  files <- getDirectoryFiles rootDir ["resources/**/*"]
+  -- this store compressed text again, but that is ok
+  -- one is used internally (but does not blow up the executable)
+  -- the pre-compressed one will be actually served and may be even smaller
+  forM files $ \fn -> do
+    bytes <- BL.readFile (rootDir </> fn)
+    return
+      EmbeddableEntry
+        { eLocation = T.pack fn,
+          eMimeType = defaultMimeLookup (T.pack fn),
+          eContent = Left (etag bytes, bytes)
+        }
+
+-- stolen from file-embed
+strToExp :: String -> Q Exp
+strToExp s =
+  return $
+    VarE 'fromString
+      `AppE` LitE (StringL s)
+{-# START_FILE app/Main/Cmd.hs #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -fno-cse #-}
+
+module Main.Cmd where
+
+import Data.Data ()
 import Data.Maybe (fromMaybe)
-import Foreign.Store (deleteStore, lookupStore, newStore, readStore)
-import Network.HTTP.Types (Status (statusCode))
-import Network.Wai
-import Network.Wai.Application.Static (defaultWebAppSettings, staticApp)
-import Network.Wai.Handler.Warp (run)
-import Network.Wai.Middleware.Gzip qualified as GZ
 import System.Console.CmdArgs.Implicit
 import System.Environment (lookupEnv)
-import System.Log.FastLogger (LogType' (LogStdout), TimedFastLogger, newTimeCache, newTimedFastLogger)
-import Xxx.Server.App (mainApp)
-import Xxx.Server.Log (logDebug, logInfo, space)
-import Xxx.Server.Types qualified as T
 
 -- this name is choosen so the cmdargs output looks good
-data Server = MkServer
+data Server = Server
   { port :: Int,
     rootDir :: FilePath
   }
   deriving (Show, Eq, Data, Typeable)
 
-newtype Build = MkBuild {rootDir :: FilePath}
-  deriving (Show, Eq, Data, Typeable)
-
-data Xxx = Server | Build
+parseArgs :: IO (Server, Verbosity)
+parseArgs = do
+  defaults <- envSettings
+  server <- cmdArgsRun $ cmdArgsMode (serverArgs defaults)
+  verb <- getVerbosity
+  return (server, verb)
 
 envString :: String -> String -> IO String
 envString k d = fromMaybe d <$> lookupEnv k
@@ -146,11 +304,11 @@ envSettings :: IO Server
 envSettings = do
   port <- envRead @Int "PORT" 8080
   rootDir <- envString "ROOTDIR" "dist-newstyle"
-  return MkServer {port, rootDir}
+  return Server {port, rootDir}
 
 serverArgs :: Server -> Server
-serverArgs MkServer {rootDir, port} =
-  MkServer
+serverArgs Server {rootDir, port} =
+  Server
     { port = port &= help "Port" &= typ "PORT",
       rootDir = rootDir &= help "Directory with /resources (dist-newstyle)" &= typ "DIR"
     }
@@ -158,9 +316,54 @@ serverArgs MkServer {rootDir, port} =
     &= verbosity
     &= summary "{{name}} v0.0.0, (c) {{author}}"
     &= details ["Run the example server", "", "Htmx for fun and profix!"]
+{-# START_FILE app/Main/Server.hs #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-buildArgs :: Server -> Build
-buildArgs MkServer {rootDir} = MkBuild {rootDir}
+module Main.Server where
+
+import Control.Concurrent.Chan.Unagi (InChan)
+import Data.ByteString.Builder (byteString)
+import Data.ByteString.Char8 qualified as BS
+import Data.Data ()
+import Data.Function ((&))
+import Main.Cmd qualified as Cmd
+import Network.HTTP.Types (Status (statusCode))
+import Network.Wai
+  ( Middleware,
+    Request (pathInfo, rawPathInfo, requestMethod),
+    responseStatus,
+  )
+import Network.Wai.Application.Static (defaultFileServerSettings, staticApp)
+import Network.Wai.Handler.Warp (run)
+import Network.Wai.Middleware.Gzip qualified as GZ
+import System.Log.FastLogger (LogType' (LogStdout), newTimeCache, newTimedFastLogger)
+import Xxx.Server.App (mainApp)
+import Xxx.Server.Log (logDebug, logInfo, space)
+import Xxx.Server.Types qualified as T
+
+withServerVerbosity :: Maybe (InChan ()) -> (FilePath -> Middleware) -> (Cmd.Server -> T.Env -> (FilePath -> Middleware) -> IO a) -> IO a
+withServerVerbosity reload serverWare handler = do
+  (server, verbosity) <- Cmd.parseArgs
+  {- bsd strfmttime/strptime
+    * %F is replaced by the date in the format “%Y-%m-%d”.
+    * %T is replaced by the time in the format “%H:%M:%S”.
+  -}
+  fmt <- newTimeCache "%F %T"
+  -- withTimedFastLogger does not work in ghci - the cleanup action seems to disable further logging
+  logger <- fst <$> newTimedFastLogger fmt (LogStdout 4096)
+  let env = T.Env {logger, reload, verbosity}
+  handler server env serverWare
+
+runServer :: Cmd.Server -> T.Env -> (FilePath -> Middleware) -> IO ()
+runServer Cmd.Server {rootDir, port} env serverWare = do
+  logInfo env (byteString "running on port " <> byteString (BS.pack $ show port))
+  let app =
+        mainApp env
+          & serverWare rootDir
+          & gzipWare
+          & logWare env
+  run port app
 
 logWare :: T.Env -> Middleware
 logWare env app req respond =
@@ -184,83 +387,10 @@ resourcesWare rootDir app req send =
     "resources" : _ -> static req send
     _ -> app req send
   where
-    static = staticApp (defaultWebAppSettings rootDir)
+    static = staticApp (defaultFileServerSettings rootDir)
 
 gzipWare :: Middleware
 gzipWare = GZ.gzip (GZ.def {GZ.gzipFiles = GZ.GzipPreCompressed GZ.GzipIgnore})
-
-runServer :: Server -> Verbosity -> TimedFastLogger -> IO ()
-runServer MkServer {rootDir, port} verb logger = do
-  let env = T.Env {logger, verbosity = verb}
-  logInfo env (byteString "running on port " <> byteString (BS.pack $ show port))
-  let app =
-        mainApp env
-          & resourcesWare rootDir
-          & gzipWare
-          & logWare env
-  run port app
-
-withServerVerbosity :: (Server -> Verbosity -> TimedFastLogger -> IO a) -> IO a
-withServerVerbosity handler = do
-  defaults <- envSettings
-  server <- cmdArgsRun $ cmdArgsMode $ serverArgs defaults
-  verb <- getVerbosity
-  {- bsd strfmttime/strptime
-    * %F is replaced by the date in the format “%Y-%m-%d”.
-    * %T is replaced by the time in the format “%H:%M:%S”.
-  -}
-  fmt <- newTimeCache "%F %T"
-  -- withTimedFastLogger does not work in ghci - the cleanup action seems to disable further logging
-  logger <- fst <$> newTimedFastLogger fmt (LogStdout 4096)
-  handler server verb logger
-
---
--- main entry point from the command line
---
-main :: IO ()
-main = do
-  Build.main
-  withServerVerbosity runServer
-
---
--- in ghci, use start (which can also re-start!) and optionally stop
---
-start :: IO ()
-start =
-  lookupStore tidStoreId >>= \case
-    Nothing -> do
-      Build.main
-      tid <- withServerVerbosity startServer
-      tidRef <- newIORef tid
-      _tidStore <- newStore tidRef
-      putStrLn ("started server with tid " <> show tid)
-      return ()
-    Just tidStore -> do
-      tidRef <- readStore tidStore
-      tid <- readIORef tidRef
-      putStrLn ("killing server with tid " <> show tid)
-      killThread tid
-      Build.main
-      newTid <- withServerVerbosity startServer
-      putStrLn ("new server with tid " <> show newTid)
-      writeIORef tidRef newTid
-      return ()
-  where
-    startServer server verb logger = forkIO $ runServer server verb logger
-    tidStoreId = 0
-
-stop :: IO ()
-stop =
-  lookupStore tidStoreId >>= \case
-    Nothing ->
-      putStrLn "Nothing to stop ..."
-    Just tidStore -> do
-      tidRef <- readStore tidStore
-      tid <- readIORef tidRef
-      killThread tid
-      deleteStore tidStore
-  where
-    tidStoreId = 0
 {-# START_FILE package.json #-}
 {
 	"private": true,
@@ -1190,13 +1320,71 @@ module.exports = {
 @tailwind utilities;
 {-# START_FILE resources/{{name}}.js #-}
 window.htmx = require("htmx.org")
+
+
+/** Fetch the reload url
+ * 
+ * @returns boolean
+ */
+const supportsReload = async () => {
+    const response = await fetch("/reload")
+    if (response.status === 200) {
+        const body = await response.json()
+        console.log("supports reload", body)
+        return body
+    } else {
+        return false
+    }
+}
+
+/** @param boolean b */
+const supportsOk = b => {
+    if (b) {
+        // supported and a reload was triggered
+        document.location.reload()
+    }
+}
+
+const supportsError = reason => {
+    console.log("support reload: error: ", reason)
+    // connection error, propably the repl was closed
+    headError("go!")
+}
+
+
+/** returns Promise<number> */
+const headReload = async () => {
+    const response = await fetch("/reload", { method: "HEAD" })
+    console.log("head /reload", response.status)
+    return response.status
+}
+
+/** @param number status  */
+const headOk = status => {
+    if (status >= 200 && status < 300) {
+        console.log("/reload up, reloading! status=", status)
+        document.location.reload()
+    } else {
+        headError()
+    }
+}
+
+const headError = (x) => {
+    setTimeout(() => headReload().then(headOk).catch(headError), 2000)
+}
+
+document.body.addEventListener("htmx:load",
+    supportsReload().then(supportsOk).catch(supportsError))
+
+
 {-# START_FILE src/Xxx/Server/App.hs #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Xxx.Server.App where
 
-import Control.Monad (forM_)
+import Control.Concurrent.Chan.Unagi (dupChan, readChan)
+import Control.Monad (forM_, join)
 import Data.ByteString (ByteString)
 import Data.Function ((&))
 import Data.Functor ((<&>))
@@ -1213,28 +1401,56 @@ import Network.HTTP.Types
     Status,
     notFound404,
     status200,
+    status204,
   )
 import Network.Wai
 import Network.Wai.Parse (defaultParseRequestBodyOptions, lbsBackEnd, parseRequestBodyEx)
 import Xxx.Server.Types
 
 mainApp :: Env -> Application
-mainApp _ req send =
+mainApp Env {reload} req send =
   case (requestMethod req, pathInfo req) of
-    ("GET", []) -> send $ mkOk page
+    -- application
+    ("GET", []) ->
+      do
+        let q =
+              queryString req
+                & L.lookup "q"
+                & join
+                & fromMaybe ""
+                & decode
+        send $ mkOk $ page q
+    -- fragments
     ("POST", ["search"]) -> do
       -- threadDelay 1_000_000 (to see the spinner)
       params <- postParams req
       let q = H.lookup "q" params & fromMaybe ""
       send $ mkOk $ search q
+
+    -- reload support
+    -- json boolean in the result if reloading should be done
+    -- client fetches this until it gets a 200 false
+    -- false is returned immediately, true only after we want to reload
+    ("GET", ["reload"]) -> do
+      case reload of
+        Just broadcast -> do
+          chan <- dupChan broadcast
+          _ <- readChan chan
+          send $ responseLBS status200 contentTypeJson "true"
+        Nothing ->
+          send $ responseLBS status200 contentTypeJson "false"
+    ("HEAD", ["reload"]) -> do
+      send $ responseLBS status204 contentTypeJson ""
+
+    -- everything else is a 404
     _ -> send $ mkResponse notFound404 errorPage
 
-page :: Html ()
-page = layout "Htmx Demo" $
+page :: Text -> Html ()
+page q = layout "Htmx Demo" $
   body_ $ do
-    navbar
+    navbar q
     div_ [id_ "search-results", class_ "px-2"] $ do
-      search ""
+      search q
 
 errorPage :: Html ()
 errorPage = layout "Htmx Demo" $
@@ -1248,8 +1464,8 @@ errorPage = layout "Htmx Demo" $
 
 -- transcribing from the daisy ui page
 -- https://daisyui.com/components/navbar/
-navbar :: Html ()
-navbar = div_ [class_ "navbar bg-base-100"] $ do
+navbar :: Text -> Html ()
+navbar q = div_ [class_ "navbar bg-base-100"] $ do
   div_ [class_ "flex-1"] $ do
     a_ [class_ "btn btn-ghost normal-case text-xl"] "Htmx/DaisyUI Demo"
     div_ [id_ "loading", class_ "htmx-indicator loading loading-spinner loading-xl"] ""
@@ -1259,6 +1475,7 @@ navbar = div_ [class_ "navbar bg-base-100"] $ do
         [ type_ "search",
           class_ "input input-bordered w-24 md:w-auto",
           name_ "q",
+          value_ q,
           placeholder_ "Search",
           hxPost_ "/search",
           hxTrigger_ "keyup changed delay:500ms, search",
@@ -1279,13 +1496,6 @@ navbar = div_ [class_ "navbar bg-base-100"] $ do
           a_ [] "Logout"
 
 -- https://daisyui.com/components/menu/
-{--
-<ul class="menu bg-base-200 w-56 rounded-box">
-  <li><a>Item 1</a></li>
-  <li><a>Item 2</a></li>
-  <li><a>Item 3</a></li>
-</ul>
---}
 search :: Text -> Html ()
 search q = div_ [] $ do
   if T.null q
@@ -1301,11 +1511,14 @@ layout title body = html_ $ do
     meta_ [name_ "viewport", content_ "device-width, initial-scale=1.0"]
     title_ (toHtml title)
     link_ [href_ "resources/{{name}}.css", rel_ "stylesheet", type_ "text/css"]
-    script_ [src_ "resources/{{name}}.js"] T.empty
+    script_ [src_ "resources/{{name}}.js", type_ "module"] T.empty
   body
 
 contentTypeHtml :: [(HeaderName, ByteString)]
 contentTypeHtml = [("Content-Type", "text/html")]
+
+contentTypeJson :: [(HeaderName, ByteString)]
+contentTypeJson = [("Content-Type", "application/json")]
 
 mkOk :: Html a -> Response
 mkOk = mkResponse status200
@@ -1380,12 +1593,14 @@ logError env = logUnconditional env "ERROR"
 {-# START_FILE src/Xxx/Server/Types.hs #-}
 module Xxx.Server.Types where
 
+import Control.Concurrent.Chan.Unagi (InChan)
 import System.Console.CmdArgs.Verbosity (Verbosity (..))
 import System.Log.FastLogger (TimedFastLogger)
 
 data Env = Env
   { logger :: TimedFastLogger,
-    verbosity :: Verbosity
+    verbosity :: Verbosity,
+    reload :: Maybe (InChan ())
   }
 {-# START_FILE src/XxxLib.hs #-}
 -- allow functions that can never be called, or rather turn off the check
@@ -1473,16 +1688,23 @@ common deps
     build-depends:
         -- 4.16.4 is ghc 9.2.x
         , base ^>=4.16.4.0
+        , base64-bytestring
         , bytestring
         , cmdargs
+        , cryptohash-sha256
         , fast-logger
+        , filepath
+        , filepattern
         , foreign-store
+        , mime-types
         , http-types
         , lucid2
         , lucid2-htmx
         -- ghci needs it here instead of the exe
         , shake
+        , template-haskell
         , text
+        , unagi-chan
         , unordered-containers
         , warp
         -- , warp-tls
@@ -1532,7 +1754,7 @@ library
 executable {{name}}
     import:           deps, opts, exec-opts
     main-is:          Main.hs
-    other-modules:    Build
+    other-modules:    Dev, Main.Build, Main.BuildTH, Main.Cmd, Main.Server
     build-depends:    {{name}}
     hs-source-dirs:   app
 

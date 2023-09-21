@@ -18,13 +18,19 @@ source-repository head
 common deps
   build-depends:
     , base >=4.16.4 && <5
+    , attoparsec
     , bytestring
     , cmdargs
+    , conduit
+    , conduit-extra
     , directory
     , filepath
+    , http-conduit
+    , resourcet
     , shake
     , text
     , unix-compat
+    , unordered-containers
   default-language: GHC2021
   ghc-options: -O -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
 

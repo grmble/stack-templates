@@ -1,0 +1,1 @@
+use author-name / author-email as in the default stack config

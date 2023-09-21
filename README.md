@@ -21,11 +21,8 @@ you wish to turn into a template.
 Redirect the output to a `.hsfiles` in your stack templates
 project.  You are done.
 
-Templation offers a single option: to turn off replacing
-the project name by `{{name}}`.
-
 ## Using the template
 
-    stack install your-new-project grmble/default
+    stack install -p author:"Your Name" -p email:your@email.com your-new-project grmble/default
 
 Substitue grmble for your github.

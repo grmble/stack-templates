@@ -1,3 +1,6 @@
+{-# START_FILE .gitignore #-}
+/dist-newstyle/
+/node_modules/
 {-# START_FILE CHANGELOG.md #-}
 # Revision history for {{name}}
 

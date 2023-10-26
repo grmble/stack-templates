@@ -6,6 +6,8 @@
 {-# START_FILE .gitignore #-}
 /dist-newstyle/
 /node_modules/
+/.clj-kondo/
+/.lsp/
 {-# START_FILE CHANGELOG.md #-}
 # Revision history for {{name}}
 
@@ -391,6 +393,19 @@ resourcesWare rootDir app req send =
 
 gzipWare :: Middleware
 gzipWare = GZ.gzip (GZ.def {GZ.gzipFiles = GZ.GzipPreCompressed GZ.GzipIgnore})
+{-# START_FILE bb.edn #-}
+{:tasks
+ {doctest {:doc "cabal repl --with-ghc=doctest"
+           :task (apply shell "cabal repl" (cons "--with-ghc=doctest" *command-line-args*))}
+  install {:doc "cabal install --overwrite-policy=always"
+           :task (apply shell "cabal install" (const "--overwrite-policy=always" *command-line-args*))}
+  test {:doc "cabal test [-v] # for verbose output"
+        :task (apply shell "cabal test" (map (fn [x] (if (= x "-v") "--test-show-details=always" x))
+                                             *command-line-args*))}
+  repl {:doc "cabal repl [-t] # for test mode"
+        :task (apply shell "cabal repl" (map (fn [x] (if (= x "-t") "test:fused-logger-aeson-test" x))
+                                             *command-line-args*))}}}
+
 {-# START_FILE package.json #-}
 {
 	"private": true,
@@ -1376,7 +1391,6 @@ const headError = (x) => {
 document.body.addEventListener("htmx:load",
     supportsReload().then(supportsOk).catch(supportsError))
 
-
 {-# START_FILE src/Xxx/Server/App.hs #-}
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -1642,7 +1656,6 @@ module.exports = {
   },
   plugins: [require("daisyui")],
 }
-
 {-# START_FILE test/Spec.hs #-}
 {-# OPTIONS_GHC -F -pgmF hspec-discover #-}
 {-# START_FILE test/XxxLibSpec.hs #-}
@@ -1676,7 +1689,7 @@ homepage:           https://{{name}}.com/{{name}}
 license:            MIT
 license-file:       LICENSE
 author:             {{author}}
-maintainer:         spamless.juergen@gmail.com
+maintainer:         {{email}}
 
 -- A copyright notice.
 -- copyright:

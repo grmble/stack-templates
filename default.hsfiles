@@ -3,6 +3,68 @@
 /node_modules/
 /.clj-kondo/
 /.lsp/
+{-# START_FILE .vscode/{{name}}.code-snippets #-}
+{
+  "New Module": {
+    "scope": "haskell",
+    "prefix": "module",
+    "isFileTemplate": true,
+    "body": [
+      "{-|",
+      "Description : ${1:Short description}",
+      "Copyright   : {{author-name}}",
+      "License     : MIT",
+      "Maintainer  : {{author-email}}",
+      "Stability   : experimental",
+      "Portability : POSIX",
+      "",
+      "${2:Longer description containing @some markup@}",
+      "-}",
+      "",
+      "{-# LANGUAGE OverloadedStrings #-}",
+      "{-# LANGUAGE OverloadedLists #-}",
+      "",
+      "module ${3:Your.Module} where",
+      "",
+      "import Data.Text (Text)",
+      "import Data.Text qualified as T",
+      "import Data.Text.Encoding qualified as T",
+      "import Data.ByteString.Builder",
+      "import Data.ByteString.Lazy qualified as LB",
+      "",
+      "$0"
+    ]
+  },
+  "New Spec Module": {
+    "scope": "haskell",
+    "prefix": "modspec",
+    "isFileTemplate": true,
+    "body": [
+      "{-# LANGUAGE OverloadedStrings #-}",
+      "{-# LANGUAGE OverloadedLists #-}",
+      "",
+      "module ${1:Your.ModuleSpec} where",
+      "",
+      "import Data.Text (Text)",
+      "import Data.Text qualified as T",
+      "import Data.Text.Encoding qualified as T",
+      "import Data.ByteString.Builder",
+      "import Data.ByteString.Lazy qualified as LB",
+      "import Test.Hspec",
+      "import Test.QuickCheck",
+      "",
+      "$0",
+      "spec :: Spec",
+      "spec = do",
+      "  describe \"Int\" $ do",
+      "    it \"roundtrips via show/read\" $ do",
+      "      \\x -> (read . show) x `shouldBe` (x :: Int)",
+      "",
+      "main :: IO ()",
+      "main = hspec spec"
+    ]
+  }
+}
 {-# START_FILE CHANGELOG.md #-}
 # Revision history for {{name}}
 
@@ -10,7 +72,7 @@
 
 * First version. Released on an unsuspecting world.
 {-# START_FILE LICENSE #-}
-Copyright (c) 2023 {{author}}
+Copyright (c) 2023 {{author-name}}
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -74,11 +136,15 @@ main = do
  {doctest {:doc "cabal repl --with-ghc=doctest"
            :task (apply shell "cabal repl" (cons "--with-ghc=doctest" *command-line-args*))}
   install {:doc "cabal install --overwrite-policy=always"
-           :task (apply shell "cabal install" (const "--overwrite-policy=always" *command-line-args*))}
+           :task (apply shell "cabal install" (cons "--overwrite-policy=always" *command-line-args*))}
   test {:doc "cabal test [-v] # for verbose output"
         :task (apply shell "cabal test" (map (fn [x] (if (= x "-v") "--test-show-details=always" x))
                                              *command-line-args*))}
+  run  {:doc "cabal run, but it always runs the exe"
+        :override-builtin true
+        :task (apply shell "cabal run" (cons "{{name}}" *command-line-args*))}
   repl {:doc "cabal repl [-t] # for test mode"
+        :override-builtin true
         :task (apply shell "cabal repl" (map (fn [x] (if (= x "-t") "test:fused-logger-aeson-test" x))
                                              *command-line-args*))}}}
 
@@ -145,8 +211,8 @@ homepage:           https://{{name}}.com/{{name}}
 -- bug-reports:
 license:            MIT
 license-file:       LICENSE
-author:             {{author}}
-maintainer:         {{email}}
+author:             {{author-name}}
+maintainer:         {{author-email}}
 
 -- A copyright notice.
 -- copyright:

@@ -23,6 +23,6 @@ project.  You are done.
 
 ## Using the template
 
-    stack new -p author:"Your Name" -p email:your@email.com your-new-project grmble/default
+    stack new your-new-project grmble/default
 
 Substitue grmble for your github.

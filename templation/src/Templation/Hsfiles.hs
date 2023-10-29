@@ -86,9 +86,9 @@ processContent Config {name, username, email} txt =
     & LT.splitOn name
     & LT.intercalate "{{name}}"
     & LT.splitOn username
-    & LT.intercalate "{{author}}"
+    & LT.intercalate "{{author-name}}"
     & LT.splitOn email
-    & LT.intercalate "{{email}}"
+    & LT.intercalate "{{author-email}}"
     & LT.splitOn "\r" -- remove carriage returns
     & LT.intercalate ""
 
